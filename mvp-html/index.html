@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGV BRASA - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+        tailwind.config = { theme: { extend: { colors: { brand: '#0ea5e9' } } } }
+    </script>
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white border-b">
+        <div class="max-w-7xl mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <h1 class="text-2xl font-bold text-brand">SGV BRASA</h1>
+                <div class="flex gap-4">
+                    <a href="index.html" class="px-3 py-2 rounded bg-brand text-white">Dashboard</a>
+                    <a href="ventas.html" class="px-3 py-2 rounded hover:bg-gray-100">Ventas</a>
+                    <a href="pagos.html" class="px-3 py-2 rounded hover:bg-gray-100">Pagos</a>
+                    <a href="clientes.html" class="px-3 py-2 rounded hover:bg-gray-100">Clientes</a>
+                    <a href="productos.html" class="px-3 py-2 rounded hover:bg-gray-100">Productos</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Dashboard Content -->
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        <h2 class="text-3xl font-bold mb-8">Dashboard</h2>
+
+        <!-- KPIs -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-lg shadow">
+                <div class="text-sm text-gray-600">Ventas Totales</div>
+                <div class="text-3xl font-bold text-gray-900" id="totalVentas">0</div>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow">
+                <div class="text-sm text-gray-600">Monto Total</div>
+                <div class="text-3xl font-bold text-gray-900" id="montoTotal">S/ 0</div>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow">
+                <div class="text-sm text-gray-600">Saldo Pendiente</div>
+                <div class="text-3xl font-bold text-yellow-600" id="saldoPendiente">S/ 0</div>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow">
+                <div class="text-sm text-gray-600">Ventas Pagadas</div>
+                <div class="text-3xl font-bold text-green-600" id="ventasPagadas">0</div>
+            </div>
+        </div>
+
+        <!-- Gráfico de Ventas -->
+        <div class="bg-white rounded-lg shadow p-6 mb-8">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold">Ventas por Período</h3>
+                <div class="flex gap-2">
+                    <button onclick="cambiarVista('dia')" id="btnDia" class="px-4 py-2 rounded bg-brand text-white text-sm hover:bg-blue-600">
+                        Día
+                    </button>
+                    <button onclick="cambiarVista('mes')" id="btnMes" class="px-4 py-2 rounded bg-white border text-gray-700 text-sm hover:bg-gray-50">
+                        Mes
+                    </button>
+                    <button onclick="cambiarVista('año')" id="btnAño" class="px-4 py-2 rounded bg-white border text-gray-700 text-sm hover:bg-gray-50">
+                        Año
+                    </button>
+                </div>
+            </div>
+            <div class="relative h-80">
+                <canvas id="ventasChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Últimas Ventas -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="text-xl font-bold mb-4">Últimas Ventas</h3>
+            <div id="ultimasVentas" class="space-y-2">
+                <p class="text-gray-500">No hay ventas registradas</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ventasChart = null;
+        let vistaActual = 'dia';
+
+        // Cargar datos del Dashboard
+        function loadDashboard() {
+            const ventas = JSON.parse(localStorage.getItem('ventas') || '[]');
+            const pagos = JSON.parse(localStorage.getItem('pagos') || '[]');
+
+            // Calcular KPIs
+            const totalVentas = ventas.length;
+            const montoTotal = ventas.reduce((sum, v) => sum + parseFloat(v.monto_total || 0), 0);
+
+            // Calcular monto pagado por venta
+            ventas.forEach(venta => {
+                const pagosVenta = pagos.filter(p => p.venta_id === venta.id);
+                venta.monto_pagado = pagosVenta.reduce((sum, p) => sum + parseFloat(p.monto || 0), 0);
+                venta.saldo_pendiente = venta.monto_total - venta.monto_pagado;
+                venta.estado = venta.saldo_pendiente <= 0 ? 'PAGADO' : 'PENDIENTE';
+            });
+
+            const saldoPendiente = ventas.reduce((sum, v) => sum + v.saldo_pendiente, 0);
+            const ventasPagadas = ventas.filter(v => v.estado === 'PAGADO').length;
+
+            // Actualizar UI
+            document.getElementById('totalVentas').textContent = totalVentas;
+            document.getElementById('montoTotal').textContent = `S/ ${montoTotal.toFixed(2)}`;
+            document.getElementById('saldoPendiente').textContent = `S/ ${saldoPendiente.toFixed(2)}`;
+            document.getElementById('ventasPagadas').textContent = ventasPagadas;
+
+            // Mostrar últimas 5 ventas
+            const ultimasVentas = ventas.slice(-5).reverse();
+            const html = ultimasVentas.map(v => `
+                <div class="flex justify-between items-center p-3 border rounded">
+                    <div>
+                        <div class="font-semibold">${v.id}</div>
+                        <div class="text-sm text-gray-600">${v.cliente_nombre} - ${v.producto_nombre}</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="font-bold text-gray-900">S/ ${parseFloat(v.monto_total).toFixed(2)}</div>
+                        <div class="text-sm font-semibold ${v.estado === 'PAGADO' ? 'text-green-600' : 'text-yellow-600'}">
+                            ${v.estado}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('ultimasVentas').innerHTML = html || '<p class="text-gray-500">No hay ventas registradas</p>';
+
+            // Cargar gráfico
+            cargarGrafico();
+        }
+
+        function cambiarVista(vista) {
+            vistaActual = vista;
+
+            // Actualizar botones
+            document.getElementById('btnDia').className = vista === 'dia'
+                ? 'px-4 py-2 rounded bg-brand text-white text-sm hover:bg-blue-600'
+                : 'px-4 py-2 rounded bg-white border text-gray-700 text-sm hover:bg-gray-50';
+            document.getElementById('btnMes').className = vista === 'mes'
+                ? 'px-4 py-2 rounded bg-brand text-white text-sm hover:bg-blue-600'
+                : 'px-4 py-2 rounded bg-white border text-gray-700 text-sm hover:bg-gray-50';
+            document.getElementById('btnAño').className = vista === 'año'
+                ? 'px-4 py-2 rounded bg-brand text-white text-sm hover:bg-blue-600'
+                : 'px-4 py-2 rounded bg-white border text-gray-700 text-sm hover:bg-gray-50';
+
+            cargarGrafico();
+        }
+
+        function cargarGrafico() {
+            const ventas = JSON.parse(localStorage.getItem('ventas') || '[]');
+
+            let labels = [];
+            let data = [];
+
+            if (vistaActual === 'dia') {
+                // Agrupar por día (últimos 30 días)
+                const ventasPorDia = {};
+                const hoy = new Date();
+
+                // Inicializar últimos 30 días
+                for (let i = 29; i >= 0; i--) {
+                    const fecha = new Date(hoy);
+                    fecha.setDate(hoy.getDate() - i);
+                    const key = fecha.toISOString().split('T')[0];
+                    ventasPorDia[key] = 0;
+                }
+
+                // Contar ventas por día
+                ventas.forEach(v => {
+                    const key = v.fecha;
+                    if (ventasPorDia.hasOwnProperty(key)) {
+                        ventasPorDia[key] += parseFloat(v.monto_total);
+                    }
+                });
+
+                labels = Object.keys(ventasPorDia).map(fecha => {
+                    const d = new Date(fecha);
+                    return `${d.getDate()}/${d.getMonth() + 1}`;
+                });
+                data = Object.values(ventasPorDia);
+
+            } else if (vistaActual === 'mes') {
+                // Agrupar por mes (últimos 12 meses)
+                const ventasPorMes = {};
+                const hoy = new Date();
+
+                // Inicializar últimos 12 meses
+                for (let i = 11; i >= 0; i--) {
+                    const fecha = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
+                    const key = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+                    ventasPorMes[key] = 0;
+                }
+
+                // Contar ventas por mes
+                ventas.forEach(v => {
+                    const fecha = new Date(v.fecha);
+                    const key = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+                    if (ventasPorMes.hasOwnProperty(key)) {
+                        ventasPorMes[key] += parseFloat(v.monto_total);
+                    }
+                });
+
+                labels = Object.keys(ventasPorMes).map(key => {
+                    const [año, mes] = key.split('-');
+                    const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+                    return `${meses[parseInt(mes) - 1]} ${año}`;
+                });
+                data = Object.values(ventasPorMes);
+
+            } else if (vistaActual === 'año') {
+                // Agrupar por año (últimos 5 años)
+                const ventasPorAño = {};
+                const añoActual = new Date().getFullYear();
+
+                // Inicializar últimos 5 años
+                for (let i = 4; i >= 0; i--) {
+                    const año = añoActual - i;
+                    ventasPorAño[año] = 0;
+                }
+
+                // Contar ventas por año
+                ventas.forEach(v => {
+                    const año = new Date(v.fecha).getFullYear();
+                    if (ventasPorAño.hasOwnProperty(año)) {
+                        ventasPorAño[año] += parseFloat(v.monto_total);
+                    }
+                });
+
+                labels = Object.keys(ventasPorAño);
+                data = Object.values(ventasPorAño);
+            }
+
+            // Destruir gráfico anterior si existe
+            if (ventasChart) {
+                ventasChart.destroy();
+            }
+
+            // Crear nuevo gráfico
+            const ctx = document.getElementById('ventasChart').getContext('2d');
+            ventasChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Monto de Ventas (S/)',
+                        data: data,
+                        backgroundColor: 'rgba(14, 165, 233, 0.8)',
+                        borderColor: 'rgba(14, 165, 233, 1)',
+                        borderWidth: 2,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return 'S/ ' + context.parsed.y.toFixed(2);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return 'S/ ' + value;
+                                }
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Cargar dashboard al inicio
+        loadDashboard();
+    </script>
+</body>
+</html>
